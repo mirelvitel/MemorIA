@@ -9,27 +9,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Stack**
 - **Frontend**: Angular 20, standalone components, signals for state, HttpClient for API calls
 - **Backend**: Spring Boot 3.5.7, Java 21, REST API under `/api/*`, layered architecture (controller → service → persistence)
-- **Database**: PostgreSQL + pgvector extension (currently MySQL — migration pending)
+- **Database**: PostgreSQL + pgvector extension
 - **AI**: Anthropic API (Claude Haiku) — server-side only, key never exposed to client
 - **External APIs**: Google Books API (search + metadata), Open Library / Project Gutenberg (full text)
-- **Infrastructure**: Docker Compose (pending) wrapping Angular dev server, Spring Boot, and PostgreSQL
+- **Infrastructure**: Docker Compose wrapping Spring Boot, Angular (nginx), and PostgreSQL
 
-## Commands
+## Running the App
 
-### Client (Angular) — run from `client/`
+### Local development (recommended)
 
 ```bash
-npm start        # Dev server on http://localhost:4200 (with API proxy to :8080)
-npm run build    # Production build to dist/
-npm test         # Run unit tests (Karma + Jasmine)
+# Terminal 1 — database only
+sudo docker compose up db
+
+# Terminal 2 — backend (from server/)
+./mvnw spring-boot:run
+
+# Terminal 3 — frontend (from client/)
+npm start
 ```
 
-### Server (Spring Boot) — run from `server/`
+The `dev` Spring profile is active by default locally. It loads `application-dev.properties` (gitignored) which contains the local DB password. This file must exist on each developer's machine — it is not committed.
+
+### Full Docker stack
 
 ```bash
-./mvnw spring-boot:run              # Start dev server on http://localhost:8080
+sudo docker compose up --build
+```
+
+Requires a `.env` file in the project root with `DB_USER` and `DB_PASSWORD`.
+
+### Other commands
+
+```bash
+# Client (from client/)
+npm run build    # Production build
+npm test         # Unit tests (Karma + Jasmine)
+
+# Server (from server/)
 ./mvnw clean package                # Build JAR
-./mvnw test                         # Run all tests (JUnit 5)
+./mvnw test                         # Run all tests
 ./mvnw test -Dtest=ClassName        # Run a single test class
 ```
 
@@ -40,6 +59,8 @@ npm test         # Run unit tests (Karma + Jasmine)
 - Standalone components only — no NgModules
 - Signals over RxJS for state management
 - `app.routes.ts` defines routing; `app.config.ts` wires `HttpClient` and router
+- `proxy.conf.json` forwards `/api/*` → `localhost:8080` during local dev (`npm start` only)
+- In Docker, nginx (`client/nginx.conf`) handles the same proxy role
 
 ### Server (Spring Boot 3.5.7, Java 21)
 - Entry: `server/src/main/java/com/memoria/server/ServerApplication.java`
@@ -48,13 +69,14 @@ npm test         # Run unit tests (Karma + Jasmine)
 - Auth: JWT-based via Spring Security (pending)
 - All API responses wrapped in a consistent response envelope
 
-### Client–Server Communication
-- Dev proxy in `client/proxy.conf.json` forwards `client:4200/api/*` → `server:8080`
-- All Anthropic API calls go through the backend — the AI key is never sent to the client
+### Spring Profiles
+- `application.properties` — shared base config; default profile is `dev`
+- `application-dev.properties` — local overrides (DB password); gitignored, never committed
+- Docker overrides properties via env vars set in `docker-compose.yaml` from `.env`
 
 ### Database
-- Target: PostgreSQL + pgvector (currently MySQL on `localhost:3307`, database `memoria`)
-- Connection config in `server/src/main/resources/application.properties`
+- PostgreSQL + pgvector on port `5432`, database `memoria`
+- In Docker: `pgvector/pgvector:pg17` image, data persisted in `postgres_data` volume
 - pgvector stores chunk embeddings for RAG retrieval
 
 ### RAG Pipeline (to be built)
