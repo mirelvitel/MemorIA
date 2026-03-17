@@ -10,8 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Frontend**: Angular 20, standalone components, signals for state, HttpClient for API calls
 - **Backend**: Spring Boot 3.5.7, Java 21, REST API under `/api/*`, layered architecture (controller → service → persistence)
 - **Database**: PostgreSQL + pgvector extension
-- **AI**: Anthropic API (Claude Haiku) — server-side only, key never exposed to client
-- **External APIs**: Google Books API (search + metadata), Open Library / Project Gutenberg (full text)
+- **AI**: Anthropic API (Claude Haiku) for generation; OpenAI `text-embedding-3-small` for embeddings — both server-side only
+- **Book ingestion**: user uploads PDF or EPUB; no external content APIs at MVP (Gutenberg is a future addon)
 - **Infrastructure**: Docker Compose wrapping Spring Boot, Angular (nginx), and PostgreSQL
 
 ## Running the App
@@ -79,10 +79,29 @@ npm test         # Unit tests (Karma + Jasmine)
 - In Docker: `pgvector/pgvector:pg17` image, data persisted in `postgres_data` volume
 - pgvector stores chunk embeddings for RAG retrieval
 
-### RAG Pipeline (to be built)
-- Book text is chunked (~400 tokens, page-aligned) and stored in pgvector with `start_page`/`end_page`
-- On each user question: embed the query, retrieve top-k chunks, boost chunks within ±30 pages of the user's current page
-- Use Anthropic prompt caching on repeated book context / system prompts to reduce costs
+### Book Ingestion Pipeline (PDF done; EPUB pending)
+- User uploads PDF or EPUB via `POST /api/books/upload`
+- Format detected via magic bytes (`%PDF` → PDF, `PK` → EPUB); file extension is not trusted
+- PDF: text extracted with Apache PDFBox (real page numbers) ✓; EPUB: Epublib + jsoup (chapter-based, sequential page numbers) — pending
+- Image-based/scanned PDFs are out of scope — returns a clear error if text extraction yields nothing
+- Chunking: ~1 page per chunk, ~10% overlap between adjacent chunks ✓
+- Embedding: OpenAI `text-embedding-3-small` (1536 dimensions) ✓
+- Stored in pgvector with schema:
+  ```sql
+  CREATE TABLE book_chunks (
+    id          UUID PRIMARY KEY,
+    book_id     UUID NOT NULL,
+    page_number INT NOT NULL,
+    chunk_text  TEXT NOT NULL,
+    embedding   vector(1536)
+  );
+  CREATE INDEX ON book_chunks USING hnsw (embedding vector_cosine_ops);
+  ```
+- Key Java deps: `org.apache.pdfbox:pdfbox:3.0.x`, `nl.siegmann.epublib:epublib-core`, `org.jsoup:jsoup`
+
+### RAG Query Pipeline (to be built)
+- Embed user question with OpenAI, retrieve top-k chunks from pgvector, boost chunks within ±30 pages of current page
+- Build prompt and call Claude Haiku; use Anthropic prompt caching on repeated book context / system prompts
 
 ## Domain Model
 
@@ -92,7 +111,7 @@ npm test         # Unit tests (Karma + Jasmine)
 | `Book` | Has metadata + current page (set before asking a question) |
 | `Conversation` | Scoped to a book, anchored to a specific page number |
 | `Message` | User or AI turn within a conversation |
-| `BookChunk` | ~400-token text slice with `start_page`, `end_page`, and a vector embedding |
+| `BookChunk` | ~1-page text slice with `page_number` and a 1536-dim vector embedding |
 
 ## Coding Conventions
 

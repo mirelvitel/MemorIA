@@ -27,6 +27,7 @@
         <url/>
     </scm>
     <properties>
+        <java.version>21</java.version>
     </properties>
     <dependencies>
         <dependency>
@@ -61,6 +62,16 @@
             <groupId>me.paulschwarz</groupId>
             <artifactId>spring-dotenv</artifactId>
             <version>4.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-vector</artifactId>
+            <version>6.6.33.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.5</version>
         </dependency>
     </dependencies>
 
