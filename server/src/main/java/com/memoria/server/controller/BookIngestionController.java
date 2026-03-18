@@ -5,6 +5,7 @@ import com.memoria.server.persistance.BookChunkRepository;
 import com.memoria.server.service.ChunkingService;
 import com.memoria.server.service.ChunkingService.Chunk;
 import com.memoria.server.service.EmbeddingService;
+import com.memoria.server.service.EpubExtractorService;
 import com.memoria.server.service.PdfExtractorService;
 import com.memoria.server.service.PdfExtractorService.PageText;
 import org.slf4j.Logger;
@@ -28,15 +29,18 @@ public class BookIngestionController {
     private static final Logger log = LoggerFactory.getLogger(BookIngestionController.class);
 
     private final PdfExtractorService pdfExtractorService;
+    private final EpubExtractorService epubExtractorService;
     private final ChunkingService chunkingService;
     private final EmbeddingService embeddingService;
     private final BookChunkRepository bookChunkRepository;
 
     public BookIngestionController(PdfExtractorService pdfExtractorService,
+                                   EpubExtractorService epubExtractorService,
                                    ChunkingService chunkingService,
                                    EmbeddingService embeddingService,
                                    BookChunkRepository bookChunkRepository) {
         this.pdfExtractorService = pdfExtractorService;
+        this.epubExtractorService = epubExtractorService;
         this.chunkingService = chunkingService;
         this.embeddingService = embeddingService;
         this.bookChunkRepository = bookChunkRepository;
@@ -49,8 +53,23 @@ public class BookIngestionController {
         }
 
         try {
-            // 1. Extract pages
-            List<PageText> pages = pdfExtractorService.extractPages(file);
+            // 1. Detect format via magic bytes and extract pages
+            byte[] header = file.getBytes();
+            boolean isPdf = header.length >= 4
+                    && header[0] == 0x25 && header[1] == 0x50 // PDF files always start with %PDF → hex 25 50 44 46
+                    && header[2] == 0x44 && header[3] == 0x46;
+            boolean isEpub = header.length >= 2
+                    && header[0] == 0x50 && header[1] == 0x4B; // EPUB files always start with PK → hex 50 4B
+
+            if (!isPdf && !isEpub) {
+                return ResponseEntity.badRequest().body(
+                        Map.of("error", "Unsupported file format. Only PDF and EPUB are accepted."));
+            }
+
+            String format = isPdf ? "PDF" : "EPUB";
+            List<PageText> pages = isPdf
+                    ? pdfExtractorService.extractPages(file)
+                    : epubExtractorService.extractPages(file);
 
             // 2. Chunk with overlap
             List<Chunk> chunks = chunkingService.chunkPages(pages);
@@ -71,7 +90,7 @@ public class BookIngestionController {
             log.info("Stored {} chunks for book {} in pgvector", entities.size(), bookId);
 
             return ResponseEntity.ok(Map.of(
-                    "message", "PDF ingested successfully",
+                    "message", format + " ingested successfully",
                     "bookId", bookId.toString(),
                     "totalPages", pages.size(),
                     "totalChunks", chunks.size(),

@@ -22,7 +22,6 @@ public class PdfExtractorService {
     public List<PageText> extractPages(MultipartFile file) throws IOException {
         byte[] bytes = file.getBytes();
 
-        // Validate magic bytes: PDF starts with %PDF
         if (bytes.length < 4 || bytes[0] != 0x25 || bytes[1] != 0x50 || bytes[2] != 0x44 || bytes[3] != 0x46) {
             throw new IllegalArgumentException("File is not a valid PDF (invalid magic bytes)");
         }

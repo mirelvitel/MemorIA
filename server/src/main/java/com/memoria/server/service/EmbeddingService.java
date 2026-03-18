@@ -35,33 +35,42 @@ public class EmbeddingService {
     @JsonIgnoreProperties(ignoreUnknown = true)
     private record EmbeddingData(List<Double> embedding) {}
 
+    // OpenAI recommends max 2048 inputs per request
+    private static final int BATCH_SIZE = 50;
+
     public List<float[]> embedAll(List<String> texts) {
-        log.info("Embedding {} chunks via OpenAI {}", texts.size(), MODEL);
+        log.info("Embedding {} chunks via OpenAI {} (batch size {})", texts.size(), MODEL, BATCH_SIZE);
 
-        EmbeddingResponse response = restClient.post()
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of(
-                        "model", MODEL,
-                        "input", texts
-                ))
-                .retrieve()
-                .body(EmbeddingResponse.class);
+        List<float[]> allEmbeddings = new java.util.ArrayList<>(texts.size());
 
-        if (response == null || response.data() == null) {
-            throw new RuntimeException("Empty response from OpenAI embeddings API");
+        for (int i = 0; i < texts.size(); i += BATCH_SIZE) {
+            List<String> batch = texts.subList(i, Math.min(i + BATCH_SIZE, texts.size()));
+
+            EmbeddingResponse response = restClient.post()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "model", MODEL,
+                            "input", batch
+                    ))
+                    .retrieve()
+                    .body(EmbeddingResponse.class);
+
+            if (response == null || response.data() == null) {
+                throw new RuntimeException("Empty response from OpenAI embeddings API");
+            }
+
+            for (EmbeddingData d : response.data()) {
+                float[] arr = new float[d.embedding().size()];
+                for (int j = 0; j < arr.length; j++) {
+                    arr[j] = d.embedding().get(j).floatValue();
+                }
+                allEmbeddings.add(arr);
+            }
+
+            log.info("Embedded batch {}/{}", Math.min(i + BATCH_SIZE, texts.size()), texts.size());
         }
 
-        List<float[]> embeddings = response.data().stream()
-                .map(d -> {
-                    float[] arr = new float[d.embedding().size()];
-                    for (int i = 0; i < arr.length; i++) {
-                        arr[i] = d.embedding().get(i).floatValue();
-                    }
-                    return arr;
-                })
-                .toList();
-
-        log.info("Received {} embeddings, dimension={}", embeddings.size(), embeddings.getFirst().length);
-        return embeddings;
+        log.info("Received {} embeddings, dimension={}", allEmbeddings.size(), allEmbeddings.getFirst().length);
+        return allEmbeddings;
     }
 }

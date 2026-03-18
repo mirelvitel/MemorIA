@@ -1,4 +1,4 @@
-# CLAUDE.md
+, # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -79,10 +79,10 @@ npm test         # Unit tests (Karma + Jasmine)
 - In Docker: `pgvector/pgvector:pg17` image, data persisted in `postgres_data` volume
 - pgvector stores chunk embeddings for RAG retrieval
 
-### Book Ingestion Pipeline (PDF done; EPUB pending)
+### Book Ingestion Pipeline (PDF ✓; EPUB ✓)
 - User uploads PDF or EPUB via `POST /api/books/upload`
 - Format detected via magic bytes (`%PDF` → PDF, `PK` → EPUB); file extension is not trusted
-- PDF: text extracted with Apache PDFBox (real page numbers) ✓; EPUB: Epublib + jsoup (chapter-based, sequential page numbers) — pending
+- PDF: text extracted with Apache PDFBox (real page numbers) ✓; EPUB: epub4j + jsoup (chapter-based, sequential page numbers, long chapters split at 2000 chars) ✓
 - Image-based/scanned PDFs are out of scope — returns a clear error if text extraction yields nothing
 - Chunking: ~1 page per chunk, ~10% overlap between adjacent chunks ✓
 - Embedding: OpenAI `text-embedding-3-small` (1536 dimensions) ✓
@@ -97,7 +97,8 @@ npm test         # Unit tests (Karma + Jasmine)
   );
   CREATE INDEX ON book_chunks USING hnsw (embedding vector_cosine_ops);
   ```
-- Key Java deps: `org.apache.pdfbox:pdfbox:3.0.x`, `nl.siegmann.epublib:epublib-core`, `org.jsoup:jsoup`
+- Key Java deps: `org.apache.pdfbox:pdfbox:3.0.5`, `io.documentnode:epub4j-core:4.2.3`, `org.jsoup:jsoup:1.18.3`
+- Embedding requests are batched (50 chunks per API call) to avoid token limit errors
 
 ### RAG Query Pipeline (to be built)
 - Embed user question with OpenAI, retrieve top-k chunks from pgvector, boost chunks within ±30 pages of current page
